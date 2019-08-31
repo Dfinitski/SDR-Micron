@@ -1,0 +1,32 @@
+//  BPF control///
+
+
+
+module bpf_ctrl (
+   input clock,
+   input [15:0] freq,
+	output reg [2:0] bpf,
+	input [7:0] BPF_mode,
+	input [7:0] BPF_control
+	);
+	
+	
+always @(posedge clock)	
+   begin
+	   if(BPF_mode == 0) bpf <= 3'd7; // bypas
+		else if(BPF_mode == 1) bpf <= BPF_control[2:0]; // manual
+		else if(BPF_mode == 2)  // automatic
+		begin 
+	      if (freq <= 38) bpf <= 3'd6; // 0-2.5MHz
+		   else
+		   if (freq <= 91) bpf <= 3'd2; // 2.5-6.0 MHz
+		   else
+		   if (freq <= 191) bpf <= 3'd0; // 6.0 - 12.5 MHz
+		   else
+		   if (freq <= 305) bpf <= 3'd3; // 12.5 - 20.0 MHz
+		   else
+		   bpf <= 3'd1; // 20 - 30 MHz
+		end
+	end
+endmodule
+
