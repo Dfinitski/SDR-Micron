@@ -1,0 +1,24 @@
+; ExtIO_SDR-Micron.def : Declares the module parameters for the DLL.
+
+LIBRARY
+
+EXPORTS
+    ; Explicit exports can go here
+	InitHW
+	OpenHW
+	StartHW
+	StopHW
+	CloseHW
+	SetHWLO
+	GetHWLO
+	GetHWSR
+	GetStatus
+	ExtIoGetSrates
+	ExtIoGetActualSrateIdx
+	ExtIoSetSrate
+	GetAttenuators
+	GetActualAttIdx
+	SetAttenuator
+	ShowGUI
+	HideGUI
+	SetCallback
