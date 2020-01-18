@@ -6,8 +6,7 @@ from __future__ import print_function
 from __future__ import absolute_import
 from __future__ import division
 
-import wx, traceback
-from types import StringType
+import sys, wx, traceback
 
 import ftd2xx as d2xx
 import time
@@ -18,7 +17,7 @@ DEBUG = 0
 
 # https://github.com/Dfinitski/SDR-Micron
 #
-# RX control, to device
+# RX control, to device, 32 bytes total
 # Preamble + 'RX0' + enable + rate + 4 bytes frequency + attenuation + 14 binary zeroes
 #
 # where:
@@ -46,12 +45,12 @@ DEBUG = 0
 # Preamble + 'RX0' + FW1 + FW2 + CLIP + 2 zeroes + 492 bytes IQ data
 #
 # Where:
-# FW1 and FW2 - char digits firmware version number
-# CLIP - ADC overflow indicator, 0 or 1 binary
-# IQ data for 0 - 7 rate:
-#     82 IQ pairs formatted as "I2 I1 I0 Q2 Q1 Q0.... ",  MSB is first, 24 bits per sample
-# IQ data for 8 - 9 rate:
-#     123 IQ pairs formatted as "I1 I0 Q1 Q0..... ", MSB is first, 16 bits per sample
+#    FW1 and FW2 - char digits firmware version number
+#    CLIP - ADC overflow indicator, 0 or 1 binary
+#    IQ data for 0 - 7 rate:
+#       82 IQ pairs formatted as "I2 I1 I0 Q2 Q1 Q0.... ",  MSB is first, 24 bits per sample
+#    IQ data for 8 - 10 rate:
+#       123 IQ pairs formatted as "I1 I0 Q1 Q0..... ", MSB is first, 16 bits per sample
 #
 # Band Scope control, to device, 32 bytes total
 # Preamble + 'BS0' + enable + period + 19 binary zeroes
@@ -59,16 +58,14 @@ DEBUG = 0
 # Where period is the full frame period in ms, from 50 to 255ms, 100ms is recommended
 # for 10Hz refresh rate window.
 #
-# No return to PC
-#
 # Band Scope data, to PC, 16384 16bit samples, 32768 bytes by 492 in each packet
 # Preamble + 'BS0' + FW1 + FW2 + CLIP + PN + 1 zero + 492 bytes BS data
 #
 # Where PN is packet number 0, 1, 2, ..., 66
 # BS data in format "BS1, BS0, BS1, BS0, ...",  MSB is first
 #
-# 66 packets PN = 0 - 65 contain 492 bytes each, and 67-th packet PN = 66 contains the remaining
-# 296 bytes of data and junk data to full 492 bytes size
+# 66 packets with PN = 0 - 65 contain 492 bytes each, and 67-th packet with PN = 66 contains
+# the remaining 296 bytes of data and junk data to full 492 bytes size
 #
 
 class Hardware(BaseHardware):
@@ -86,7 +83,7 @@ class Hardware(BaseHardware):
     self.old_freq = 0
     self.sdrmicron_clock = 76800000
     self.sdrmicron_decim = 1600
-    self.bscope_data = ''
+    self.bscope_data = bytearray(0)
     self.fw_ver = None
     self.frame_msg = ''
     
@@ -106,7 +103,7 @@ class Hardware(BaseHardware):
         return 'Device was not found'  
     for i in range(enum):  # Searching and openinq needed device
         a = d2xx.getDeviceInfoDetail(i)
-        if(a['description']=='SDR-Micron'):
+        if(a['description']==b'SDR-Micron'):
             try: self.usb = d2xx.openEx(a['serial'])
             except:
               return 'Device was not found'
@@ -120,7 +117,7 @@ class Hardware(BaseHardware):
             time.sleep(1.5) # waiting for initialisation device
             data = self.usb.read(self.usb.getQueueStatus()) # clean the usb data buffer
             self.device = 'Opened'
-            self.frame_msg = a['description'] + '   S/N - ' + a['serial']
+            self.frame_msg = str(a['description']) + '   S/N - ' + str(a['serial'])
             return self.frame_msg
     return 'Device was not found'
   
@@ -161,7 +158,7 @@ class Hardware(BaseHardware):
         btn.SetLabel('RF +10', True)
 
   def VarDecimGetChoices(self): # Return a list/tuple of strings for the decimation control.
-    return map(str, self.sample_rates) # convert integer to string
+    return list(map(str, self.sample_rates)) # convert integer to string
 
   def VarDecimGetLabel(self):		# return a text label for the control
     return "Sample rate ksps"
@@ -214,14 +211,24 @@ class Hardware(BaseHardware):
       freq2 = work & 0xFF
       work = work >> 8
       freq1 = work & 0xFF
-      MESSAGE = 7*chr(0x55) + chr(0xd5) + b'RX0' + chr(self.enable) + chr(self.rate)
-      MESSAGE += chr(freq1) + chr(freq2) + chr(freq3) + chr(freq4) + chr(self.att) + 14*chr(0) # Preparing the message
+      if sys.version_info.major <= 2:
+        MESSAGE = 7*chr(0x55) + chr(0xd5) + 'RX0' + chr(self.enable) + chr(self.rate)
+        MESSAGE += chr(freq1) + chr(freq2) + chr(freq3) + chr(freq4) + chr(self.att) + 14*chr(0)
+      else:
+        MESSAGE = b"\x55\x55\x55\x55\x55\x55\x55\xd5RX0"
+        MESSAGE += bytes((self.enable, self.rate, freq1, freq2, freq3, freq4, self.att))
+        MESSAGE += bytes(14)
       try: self.usb.write(MESSAGE)
       except: print('Error while rx_control_upd')  
 
   def bscope_control_upd(self):
     if self.device == 'Opened':
-      MESSAGE = 7*chr(0x55) + chr(0xd5) + 'BS0' + chr(self.enable) + chr(100) + 19 * chr(0)
+      if sys.version_info.major <= 2:
+        MESSAGE = 7*chr(0x55) + chr(0xd5) + 'BS0' + chr(self.enable) + chr(100) + 19 * chr(0)
+      else:
+        MESSAGE = b"\x55\x55\x55\x55\x55\x55\x55\xd5BS0"
+        MESSAGE += bytes((self.enable, 100))
+        MESSAGE += bytes(19)  
       try: self.usb.write(MESSAGE)
       except: None
 	  
@@ -230,16 +237,17 @@ class Hardware(BaseHardware):
       return
     while (self.usb.getQueueStatus() >= 508):
       data = self.usb.read(508)
-      if data[8:11] == 'RX0':		# Rx I/Q data
-        if ord(data[13]):
+      data = bytearray(data)
+      if data[8:11] == bytearray(b'RX0'):		# Rx I/Q data
+        if data[13]:
           self.GotClip()
         if self.fw_ver is None:
-          self.fw_ver = data[11] + '.' + data[12]
+          self.fw_ver = chr(data[11]) + '.' + chr(data[12])
           self.frame_msg += '   F/W version - ' + self.fw_ver
           self.application.main_frame.SetConfigText(self.frame_msg)
         self.AddRxSamples(data[16:])
-      elif data[8:11] == 'BS0':		# bandscope data
-        packet_number = ord(data[14])
+      elif data[8:11] == bytearray(b'BS0'):		# bandscope data
+        packet_number = data[14]
         if packet_number == 0:			# start of a block of data
           self.bscope_data = data[16:]		# 492 bytes
         elif packet_number < 66:
