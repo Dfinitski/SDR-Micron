@@ -14,10 +14,14 @@ bool g_device_found = false;
 bool g_device_opened = false;
 bool g_device_enabled = false;
 
+bool g_firmware_version_changed = false;
+char g_firmware_version_high = 0;
+char g_firmware_version_low = 0;
+
 long g_frequency = 7125000;
 
 int g_sample_rate_idx = 0;
-const long g_sample_rates[10] = {
+const long g_sample_rates[11] = {
 	48000,
 	96000,
 	192000,
@@ -27,7 +31,8 @@ const long g_sample_rates[10] = {
 	640000,
 	768000,
 	960000,
-	1536000
+	1536000,
+	1920000
 };
 
 int g_attenuator_idx = 2;
@@ -39,10 +44,10 @@ const char g_attenuators[4] = {
 };
 
 LPCTSTR g_gui_attenuator_strings[4] = {
-	TEXT("-20dB"),
-	TEXT("-10dB"),
-	TEXT("0dB"),
-	TEXT("+10dB")
+	TEXT("-20 dB"),
+	TEXT("-10 dB"),
+	TEXT("0 dB"),
+	TEXT("+10 dB")
 };
 
 static pfnExtIOCallback g_callback = NULL;
@@ -209,7 +214,7 @@ int WINAPI GetAttenuators(int idx, float* attenuation)
 	if ((idx < 0) || (idx >= _countof(g_attenuators)))
 		return 1;	// ERROR
 
-	*attenuation = 10.0 - (float)g_attenuators[idx];
+	*attenuation = 10.0f - (float)g_attenuators[idx];
 	return 0;
 }
 
@@ -711,6 +716,8 @@ void ReceiveData()
 	for (int i = 0; i < BLOCK_COUNT; i++)
 	{
 		memcpy(block, RX_DEVICE_CONTROL_PACKET_PREAMBLE, sizeof RX_DEVICE_CONTROL_PACKET_PREAMBLE);
+		block[FIRMWARE_VERSION_HIGH_OFFSET] = '1';
+		block[FIRMWARE_VERSION_LOW_OFFSET] = '2';
 		for (int j = RECEIVE_BLOCK_HEADER_SIZE; j < RECEIVE_BLOCK_SIZE; j++)
 		{
 			block[j] = generator() % 256;
@@ -735,7 +742,7 @@ void ReceiveData()
 		return;
 	}
 
-	DWORD bytesToReceive = USB_BUFFER_SIZE / 2;
+	DWORD bytesToReceive = 508; // USB_BUFFER_SIZE / 2;
 	if (bytesToReceive < bytesAvailable)
 		bytesToReceive = bytesAvailable;
 
@@ -781,6 +788,7 @@ void ReceiveData()
 		Sleep(2000);
 		return;
 	}
+	if(bytesAvailable> 1000) LOG_WARNING(("bytesAvailable %i bytes", bytesAvailable));
 
 	if (bytesAvailable == 0)
 		return;	// Best case: no additional bytes
@@ -804,6 +812,7 @@ void ReceiveData()
 		Sleep(2000);
 		return;
 	}
+	
 
 	g_bytesReceived += bytesReceived;
 	// Just a sanity check. Normally g_bytesReceived will be less than RECEIVE_BUFFER_SIZE.
@@ -842,6 +851,7 @@ void ProcessData()
 		if (full_preamble_displacement != 0)
 		{
 			LOG_WARNING(("ProcessData() -- preamble displacement %i bytes", full_preamble_displacement));
+			DumpBlock(data);
 			g_preamble_displacement_extra = 0;
 		}
 
@@ -930,6 +940,16 @@ void ProcessBlock(PBYTE block)
 		}
 	}
 #endif
+
+	if ((g_firmware_version_high != block[FIRMWARE_VERSION_HIGH_OFFSET]) ||
+		(g_firmware_version_low != block[FIRMWARE_VERSION_LOW_OFFSET]))
+	{
+		// Extract firmware version from packet
+		g_firmware_version_high = block[FIRMWARE_VERSION_HIGH_OFFSET];
+		g_firmware_version_low = block[FIRMWARE_VERSION_LOW_OFFSET];
+		g_firmware_version_changed = true;
+	}
+
 	block += RECEIVE_BLOCK_HEADER_SIZE;
 	if (g_active_sample_rate_idx < 8)
 	{

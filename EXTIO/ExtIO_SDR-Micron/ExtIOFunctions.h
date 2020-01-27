@@ -3,7 +3,7 @@
 #define DEVICE_NAME		"SDR-Micron"
 
 #define LOWEST_FREQUENCY	0l
-#define HIGHEST_FREQUENCY	1700000000l
+#define HIGHEST_FREQUENCY	1800000000l
 
 #define PARAMETERS_SECTION				TEXT("PARAMETERS")
 #define SAMPLE_RATE_IDX_PARAMETER		TEXT("SampleRateIdx")
@@ -29,6 +29,7 @@
 #         7 for 768 kHz
 #         8 for 960 kHz
 #         9 for 1536 kHz
+#        10 for 1920 kHz
 #
 #    frequency – 32 bits of tuning frequency, MSB is first
 #    attenuation – binary 0, 10, 20, 30 for needed attenuation
@@ -39,9 +40,9 @@
 #Where:
 #FW1 and FW2 – char digits firmware version number
 #CLIP – ADC overflow indicator, 0 or 1 binary
-#IQ data for 0 - 6 rate:
+#IQ data for 0 - 7 rate:
 #     82 IQ pairs formatted as “I2 I1 I0 Q2 Q1 Q0…..”,  MSB is first, 24 bits per sample
-#IQ data for 7 - 8 rate:
+#IQ data for 8 - 10 rate:
 #     123 IQ pairs formatted as "I1 I0 Q1 Q0..... ", MSB is first, 16 bits per sample
 #
 */
@@ -59,25 +60,30 @@ typedef struct _RX_DEVICE_CONTROL_PACKET {
 } RX_DEVICE_CONTROL_PACKET;
 #pragma pack(pop)
 
-#define RECEIVE_BLOCK_SIZE		508		/* 16 bytes header + 492 bytes IQ data */
-#define RECEIVE_BLOCK_HEADER_SIZE	16
-#define IQ24_SIZE				6
-#define IQ24_PER_BLOCK			82
-#define IQ16_SIZE				4
-#define IQ16_PER_BLOCK			123
-#define OUTPUT_BLOCK_LEN		512		/* Not bytes, but number of 24-bit IQ pairs! */
+#define RECEIVE_BLOCK_SIZE				508		/* 16 bytes header + 492 bytes IQ data */
+#define RECEIVE_BLOCK_HEADER_SIZE		16
+#define FIRMWARE_VERSION_HIGH_OFFSET	11
+#define FIRMWARE_VERSION_LOW_OFFSET		12
+#define IQ24_SIZE						6
+#define IQ24_PER_BLOCK					82
+#define IQ16_SIZE						4
+#define IQ16_PER_BLOCK					123
+#define OUTPUT_BLOCK_LEN				32*512	/* Not bytes, but number of 24-bit IQ pairs! */
 
-#define USB_BUFFER_SIZE			65536
-#define USB_READ_TIMEOUT		100
-#define USB_WRITE_TIMEOUT		100
-#define RECEIVE_BUFFER_SIZE		(USB_BUFFER_SIZE + RECEIVE_BLOCK_SIZE)
+#define USB_BUFFER_SIZE					65536
+#define USB_READ_TIMEOUT				100
+#define USB_WRITE_TIMEOUT				100
+#define RECEIVE_BUFFER_SIZE				(2 * USB_BUFFER_SIZE + RECEIVE_BLOCK_SIZE)
 
 extern bool g_device_found;
 extern bool g_device_opened;
 extern bool g_device_enabled;
+extern bool g_firmware_version_changed;
+extern char g_firmware_version_high;
+extern char g_firmware_version_low;
 extern long g_frequency;
 extern int g_sample_rate_idx;
-extern const long g_sample_rates[10];
+extern const long g_sample_rates[11];
 extern int g_attenuator_idx;
 extern const char g_attenuators[4];
 extern LPCTSTR g_gui_attenuator_strings[4];
@@ -129,3 +135,4 @@ void ProcessBlock(PBYTE block);
 void ProcessIQ24(PBYTE block, int count);
 void ProcessIQ16(PBYTE block, int count);
 void SendOutput();
+static void DumpBlock(PBYTE block);

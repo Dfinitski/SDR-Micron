@@ -24,7 +24,11 @@ protected:
 public:
 	virtual BOOL OnInitDialog();
 	afx_msg void OnActivate(UINT nState, CWnd* pWndOther, BOOL bMinimized);
-	afx_msg void OnVScroll(UINT nSBCode, UINT nPos, CScrollBar* pScrollBar);
+	afx_msg void OnDestroy();
+	afx_msg void OnTimer(UINT_PTR);
+	afx_msg void OnCbnSelchangeSampleRateCombo();
+	afx_msg void OnCbnSelchangeAttenuationCombo();
 	void SelectCurrentSampleRate();
 	void SelectCurrentAttenuation();
+	void SetVersion();
 };

@@ -11,6 +11,8 @@
 #define WINDOW_TOP_POSITION				TEXT("WindowTop")
 #define WINDOW_LEFT_POSITION			TEXT("WindowLeft")
 
+#define TIMER_ID		(WM_USER + 200)
+
 
 // CGUI dialog
 
@@ -33,7 +35,10 @@ void CGUI::DoDataExchange(CDataExchange* pDX)
 
 BEGIN_MESSAGE_MAP(CGUI, CDialogEx)
 	ON_WM_ACTIVATE()
-	ON_WM_VSCROLL()
+	ON_WM_DESTROY()
+	ON_WM_TIMER()
+	ON_CBN_SELCHANGE(IDC_SAMPLE_RATE_COMBO, &CGUI::OnCbnSelchangeSampleRateCombo)
+	ON_CBN_SELCHANGE(IDC_ATTENUATION_COMBO, &CGUI::OnCbnSelchangeAttenuationCombo)
 END_MESSAGE_MAP()
 
 
@@ -44,13 +49,31 @@ BOOL CGUI::OnInitDialog()
 {
 	CDialogEx::OnInitDialog();
 
-	CSliderCtrl* pSampleRateSlider = (CSliderCtrl*)GetDlgItem(IDC_SAMPLE_RATE_SLIDER);
-	pSampleRateSlider->SetRange(0, _countof(g_sample_rates) - 1);
+	CComboBox* pSampleRateCombo = (CComboBox*)GetDlgItem(IDC_SAMPLE_RATE_COMBO);
+	for (int i = 0; i < _countof(g_sample_rates); i++)
+	{
+		TCHAR buffer[16];
+		_stprintf_s(buffer, TEXT("%i kHz"), g_sample_rates[i] / 1000);
+		int idx = pSampleRateCombo->AddString(buffer);
+		if (idx >= 0)
+			pSampleRateCombo->SetItemData(idx, i);
+	}
+
 	SelectCurrentSampleRate();
 
-	CSliderCtrl* pAttenuationSlider = (CSliderCtrl*)GetDlgItem(IDC_ATTENUATION_SLIDER);
-	pAttenuationSlider->SetRange(0, _countof(g_attenuators) - 1);
+	CComboBox* pAttenuationCombo = (CComboBox*)GetDlgItem(IDC_ATTENUATION_COMBO);
+	ASSERT(_countof(g_attenuators) == _countof(g_gui_attenuator_strings));
+	for (int i = _countof(g_gui_attenuator_strings) - 1; i >= 0; i--)
+	{
+		int idx = pAttenuationCombo->AddString(g_gui_attenuator_strings[i]);
+		if (idx >= 0)
+			pAttenuationCombo->SetItemData(idx, i);
+	}
+
 	SelectCurrentAttenuation();
+
+	SetTimer(TIMER_ID, 200, NULL);
+	SetVersion();
 
 	CRect screen;
 	GetDesktopWindow()->GetClientRect(screen);
@@ -84,32 +107,87 @@ void CGUI::OnActivate(UINT nState, CWnd* pWndOther, BOOL bMinimized)
 }
 
 
-void CGUI::OnVScroll(UINT nSBCode, UINT nPos, CScrollBar* pScrollBar)
+void CGUI::OnDestroy()
 {
-	if (pScrollBar != NULL) switch (pScrollBar->GetDlgCtrlID())
+	KillTimer(TIMER_ID);
+	CDialogEx::OnDestroy();
+}
+
+
+void CGUI::OnTimer(UINT_PTR)
+{
+	if (g_firmware_version_changed)
 	{
-	case IDC_SAMPLE_RATE_SLIDER:
-		SetSampleRateInternal(_countof(g_sample_rates) - 1 - ((CSliderCtrl*)pScrollBar)->GetPos(), true);
-		break;
-
-	case IDC_ATTENUATION_SLIDER:
-		SetAttenuatorInternal(_countof(g_attenuators) - 1 - ((CSliderCtrl*)pScrollBar)->GetPos(), true);
-		break;
+		g_firmware_version_changed = false;
+		SetVersion();
 	}
+}
 
-	CDialogEx::OnVScroll(nSBCode, nPos, pScrollBar);
+
+void CGUI::OnCbnSelchangeSampleRateCombo()
+{
+	CComboBox* pSampleRateCombo = (CComboBox*)GetDlgItem(IDC_SAMPLE_RATE_COMBO);
+	int item = pSampleRateCombo->GetCurSel();
+	if (item >= 0)
+	{
+		int idx = pSampleRateCombo->GetItemData(item);
+		SetSampleRateInternal(idx, true);
+	}
+}
+
+
+void CGUI::OnCbnSelchangeAttenuationCombo()
+{
+	CComboBox* pAttenuationCombo = (CComboBox*)GetDlgItem(IDC_ATTENUATION_COMBO);
+	int item = pAttenuationCombo->GetCurSel();
+	if (item >= 0)
+	{
+		int idx = pAttenuationCombo->GetItemData(item);
+		SetAttenuatorInternal(idx, true);
+	}
 }
 
 
 void CGUI::SelectCurrentSampleRate()
 {
-	CSliderCtrl* pSampleRateSlider = (CSliderCtrl*)GetDlgItem(IDC_SAMPLE_RATE_SLIDER);
-	pSampleRateSlider->SetPos(_countof(g_sample_rates) - 1 - g_sample_rate_idx);
+	CComboBox* pSampleRateCombo = (CComboBox*)GetDlgItem(IDC_SAMPLE_RATE_COMBO);
+	int itemsCount = pSampleRateCombo->GetCount();
+	for (int i = 0; i < itemsCount; i++)
+	{
+		if (g_sample_rate_idx == pSampleRateCombo->GetItemData(i))
+		{
+			pSampleRateCombo->SetCurSel(i);
+			return;
+		}
+	}
+
+	pSampleRateCombo->SetCurSel(-1);
 }
 
 
 void CGUI::SelectCurrentAttenuation()
 {
-	CSliderCtrl* pAttenuationSlider = (CSliderCtrl*)GetDlgItem(IDC_ATTENUATION_SLIDER);
-	pAttenuationSlider->SetPos(_countof(g_attenuators) - 1 - g_attenuator_idx);
+	CComboBox* pAttenuationCombo = (CComboBox*)GetDlgItem(IDC_ATTENUATION_COMBO);
+	int itemsCount = pAttenuationCombo->GetCount();
+	for (int i = 0; i < itemsCount; i++)
+	{
+		if (g_attenuator_idx == pAttenuationCombo->GetItemData(i))
+		{
+			pAttenuationCombo->SetCurSel(i);
+			return;
+		}
+	}
+
+	pAttenuationCombo->SetCurSel(-1);
+}
+
+
+void CGUI::SetVersion()
+{
+	if ((g_firmware_version_high != 0) || (g_firmware_version_low != 0))
+	{
+		TCHAR buffer[32];
+		_stprintf_s(buffer, TEXT("FW ver. %C.%C"), g_firmware_version_high, g_firmware_version_low);
+		((CStatic*)GetDlgItem(IDC_VERSION))->SetWindowText(buffer);;
+	}
 }
