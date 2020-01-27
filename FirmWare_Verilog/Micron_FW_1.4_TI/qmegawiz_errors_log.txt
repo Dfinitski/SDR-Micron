@@ -1,0 +1,10 @@
+
+
+C:/Users/David/Desktop/SDR_Micron/micron_fW_1.7/PLL1.v
+
+Apr 27 06PM:04:41>: Error in CNX file format.
+
+Error messages are listed in file
+C:/Users/David/Desktop/SDR_Micron/micron_fW_1.7/PLL1.cnxerr.
+
+Can't create the custom megafunction variation file(s)
